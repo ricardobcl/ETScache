@@ -1,9 +1,18 @@
-Cherly
+ETScache
 =======
 
-ETScache (sher-lee) is an in-VM caching library for Erlang.  It is implemented as a linked in driver and the main lookup mechanism is Judy arrays.  There's almost no copying or reallocation of binary data involved, so cherly should be blindingly fast.  Cherly is designed for the needs of Dynomite, but it can live as a caching library in its own right.
+ETScache is very(!) simple in-memory cache, using ETS tables in Erlang. You can create a cache with a maximum number of elements in it, and when this limit is exceed, the oldest element is eliminated.
 
-Surely you can't be serious?
+It has the following functions
+
+	* new (max_size) -> etscache
+	* put_new (etscache, key, value) -> ok ; {error, "Already exists!"}
+	* update (etscache, key, value) -> ok
+	* get (etscache, key) -> value
+
+
+It is design to perform rapidly: _Get_ is constant (_O(1)_); _Put\_New_ is constant (_O(1)_); Update is linear with the number os elements in cache (_O(N)_).
+
 
 How To Use
 =======
