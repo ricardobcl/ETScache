@@ -112,21 +112,25 @@ get(#cache{table=Tab}, Key) ->
 
 % @private
 timestamp() ->
-%    calendar:datetime_to_gregorian_seconds(erlang:universaltime()).
 	{Mega,Sec,Micro} = erlang:now(),
 	(Mega*1000000+Sec)*1000000+Micro.
 
-%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%
 
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%
+% erlc etscache.erl 
 % erl -noshell -s etscache test -s init stop
 
 test() ->
-	C = etscache:new(3),      %start takes 1 argument, the maximum cache size in bytes
+	C = etscache:new(3),
 	TabList = ets:tab2list(C#cache.table),
 	io:format("~n~nLista: ~p~n", [TabList]),
 	ok = etscache:put_new(C, key1, "v1"), 
-	{error,_,_} = etscache:put_new(C, key1, "cenas"), 
+	{error,_} = etscache:put_new(C, key1, "cenas"), 
 	ok = etscache:put_new(C, key2, "v2"), 
 	ok = etscache:put_new(C, key3, "v3"), 
 	ok = etscache:put_new(C, key4, "v4"), 

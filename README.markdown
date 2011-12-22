@@ -5,10 +5,10 @@ ETScache is very(!) simple in-memory cache, using ETS tables in Erlang. You can 
 
 It has the following functions
 
-	* new (max_size) -> etscache
-	* put_new (etscache, key, value) -> ok ; {error, "Already exists!"}
-	* update (etscache, key, value) -> ok
-	* get (etscache, key) -> value
+	*	new (max_size) -> etscache
+	*	put_new (etscache, key, value) -> ok ; {error, "Already exists!"}
+	*	update (etscache, key, value) -> ok
+	*	get (etscache, key) -> value
 
 
 It is design to perform rapidly: _Get_ is constant (_O(1)_); _Put\_New_ is constant (_O(1)_); Update is linear with the number os elements in cache (_O(N)_).
@@ -24,7 +24,7 @@ How To Use
 		ok = etscache:put_new(C, key1, "v1"), 
 		
 		% put_new only adds new values
-		{error,_,_} = etscache:put_new(C, key1, "cenas"), 
+		{error,_} = etscache:put_new(C, key1, "cenas"), 
 		
 		% Update an existing value
 		etscache:update(C, key1, "v11"), 
@@ -34,3 +34,13 @@ How To Use
           not_found -> io:format("Value not Found!~n");
           {ok, Value} -> io:format("Value found -> ~p~n", [Value])
         end.
+
+
+Test It
+_______
+
+Function _test_ gives and example of a possible run, and output the cache in the end, to check its state.
+
+	$ cd _etscacheFolder_
+	$ erlc etscache.erl 
+ 	$ erl -noshell -s etscache test -s init stop
