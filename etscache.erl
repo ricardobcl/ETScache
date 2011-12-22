@@ -149,9 +149,9 @@ test() ->
 	TabList2 = ets:tab2list(C#cache.table),
 	TabList3 = ets:tab2list(C#cache.itable),
 	io:format("~n~nLista: ~p~n~nAnd ~p~n", [TabList2,TabList3]),
-	get(C, key10),
-	get(C, key9),
-	get(C, key100).
+	etscache:get(C, key10),
+	etscache:get(C, key9),
+	etscache:get(C, key100).
 	
 	
 	
