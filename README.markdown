@@ -48,3 +48,9 @@ Function _test_ gives and example of a possible run, and output the cache in the
 	~$ cd "ETScacheFolder"
 	~$ erlc etscache.erl 
 	~$ erl -noshell -s etscache test -s init stop
+	
+	
+TODO
+----
+
+*	Add proper testing framework. Look at <http://etrepum.github.com/erl_testing_2011/>
