@@ -1,7 +1,7 @@
 ETScache
 =======
 
-ETScache is very(!) simple in-memory cache, using ETS tables in Erlang. You can create a cache with a maximum number of elements in it, and when this limit is exceed, the oldest element is eliminated.
+ETScache is very(!) simple, self-contained memory cache, using only ETS tables in Erlang. You can create a cache with a maximum number of elements in it, and when this limit is exceed, the oldest element is eliminated.
 
 It has the following functions
 
