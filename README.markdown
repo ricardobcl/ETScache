@@ -13,6 +13,10 @@ It has the following functions
 
 It is design to perform rapidly: _Get_ is constant **_O(1)_**; _Put\_New_ is constant **_O(1)_**; Update is linear with the number os elements in cache **_O(N)_**.
 
+Author
+------
+
+Ricardo Gonçalves <tome.wave@gmail.com>
 
 How To Use
 ----------
