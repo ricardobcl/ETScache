@@ -54,3 +54,5 @@ TODO
 ----
 
 *	Add proper testing framework. Look at <http://etrepum.github.com/erl_testing_2011/>
+*	Look at Judy C implemention http://judy.sourceforge.net/doc/index.html
+*	Benchmarks!!
