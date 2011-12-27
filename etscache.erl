@@ -37,7 +37,7 @@
 -type value() :: binary().
 
 
-%% Container for the cache, a.k.a. etscache()
+%% Container for the cache
 %% It has 2 ets tables, and a fixed maximum size for the cache
 -record(cache, {
 	maxsize :: integer(),
@@ -76,7 +76,7 @@ new(Maxsize) ->
 put_new(_Cache=#cache{maxsize=Msize, table=Tab,itable=ITab}, Key, Value) ->
 	Bin = list_to_binary(Value),
 	[{_,?CACHE_SIZE, CurrentSize}] = ets:lookup(Tab, ?CACHE_SIZE),
-    %%io:format("Current size ~p~n", [CurrentSize]),
+	%%io:format("Current size ~p~n", [CurrentSize]),
 
 	Size = 1, 	%% Size = size(Bin),
 	Time = timestamp(),
@@ -130,15 +130,15 @@ update(_Cache=#cache{table=Tab, itable=ITab}, Key, Value) ->
 
 %% Get data given the key
 get(#cache{table=Tab}, Key) ->
-    case ets:lookup(Tab, Key) of
-        [Rtable] ->
+	case ets:lookup(Tab, Key) of
+		[Rtable] ->
 			Value = binary_to_list(Rtable#r_table.value),
 			%%io:format("We found it, key= ~p value=~p~n", [Key,Value]),
 			{ok, Value};
-        [] ->
+		[] ->
 			%%io:format("No person with ID = ~p~n", [Key]),
 			not_found
-    end.
+	end.
 
 
 % @private
