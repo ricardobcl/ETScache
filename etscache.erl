@@ -5,7 +5,7 @@
 %%
 %% @author    Ricardo Gonçalves <tome.wave@gmail.com>
 %%
-%% @copyright 2011 Ricardo Gonçalves 
+%% @copyright 2011 Ricardo Tomé Gonçalves 
 %%
 %% This file is provided to you under the Apache License,
 %% Version 2.0 (the "License"); you may not use this file
@@ -31,6 +31,9 @@
 
 
 -module(etscache).
+
+-author('Ricardo Tome Goncalves <tome@di.uminho.pt>').
+
 -export([new/1, put_new/3, update/3, get/2, test/0]).
 
 -type key() :: binary().
