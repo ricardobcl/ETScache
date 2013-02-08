@@ -7,8 +7,8 @@ It has the following functions
 
 *	new (max_size) -> etscache
 *	put_new (etscache, key, value) -> ok ; {error, "Already exists!"}
-*	update (etscache, key, value) -> ok
-*	get (etscache, key) -> value
+*	update (etscache, key, value) -> ok | not_found
+*	get (etscache, key, timeout) -> {ok, value} | not_found | expired
 
 
 It is design to perform rapidly: _Get_ is constant **_O(1)_**; _Put\_New_ is constant **_O(1)_**; Update is linear with the number os elements in cache **_O(N)_**.
@@ -34,9 +34,11 @@ How To Use
 		etscache:update(C, key1, "v11"), 
 		
 		% Get the value for some key
-        case etscache:get(C, key1) of
+        Milliseconds = 10000
+        case etscache:get(C, key1, Milliseconds) of
           not_found -> io:format("Value not Found!~n");
-          {ok, Value} -> io:format("Value found -> ~p~n", [Value])
+          {ok, Value} -> io:format("Value found -> ~p~n", [Value]);
+          expired -> io:format("Value is Expired!~n");
         end.
 
 
@@ -46,8 +48,8 @@ Test It
 Function _test_ gives and example of a possible run, and output the cache in the end, to check its state.
 
 	~$ cd "ETScacheFolder"
-	~$ erlc etscache.erl 
-	~$ erl -noshell -s etscache test -s init stop
+	~$ erlc -DTEST etscache.erl 
+	~$ erl -eval "eunit:test(etscache)"
 	
 	
 TODO
