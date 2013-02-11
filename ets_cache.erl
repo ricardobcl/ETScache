@@ -41,23 +41,23 @@
 
 %% @doc Record for ets_cache. It has 2 ets tables, and a maximum size for the cache
 -record(cache, {
-	maxsize :: non_neg_integer(),
-	table :: tab(),
-	itable :: tab()
+    maxsize :: non_neg_integer(),
+    table :: tab(),
+    itable :: tab()
 }).
 
 %% Table with the key, value and timestamp
 -record(r_table, {
-	key :: key(),
-	ts :: integer(),
-	value :: value()
+    key :: key(),
+    ts :: integer(),
+    value :: value()
 }).
 
 
 %% Inverted table, ordered by timestamp, so we can always know the oldest key
 -record(r_itable, {
-	ts :: integer(),
-	key :: key()
+    ts :: integer(),
+    key :: key()
 }).
 
 %% the key where is stored the current cache size
@@ -65,26 +65,26 @@
 
 %% Create a new cache with a mixumim size
 new(Maxsize) -> 
-	Table = ets:new(table, [set,private,{keypos,#r_table.key}]),
-	ITable = ets:new(itable, [ordered_set,private,{keypos,#r_itable.ts}]),
-	ets:insert(Table, {dummy, ?CACHE_SIZE, 0}),
-	#cache{maxsize = Maxsize, table=Table, itable=ITable}.
-	
-	
+    Table = ets:new(table, [set,private,{keypos,#r_table.key}]),
+    ITable = ets:new(itable, [ordered_set,private,{keypos,#r_itable.ts}]),
+    ets:insert(Table, {dummy, ?CACHE_SIZE, 0}),
+    #cache{maxsize = Maxsize, table=Table, itable=ITable}.
+    
+    
 
 %% Insert NEW data in cache 
 put_new(Cache, Key, Value) when is_list(Value) ->
- 	put_new(Cache, Key, list_to_binary(Value)); 
+    put_new(Cache, Key, list_to_binary(Value)); 
 put_new(#cache{maxsize=Msize, table=Tab,itable=ITab}, Key, Value) 
         when is_binary(Value) ->
-	[{_,?CACHE_SIZE, CurrentSize}] = ets:lookup(Tab, ?CACHE_SIZE),
-	Time = timestamp(),
+    [{_,?CACHE_SIZE, CurrentSize}] = ets:lookup(Tab, ?CACHE_SIZE),
+    Time = timestamp(),
     %% insert data in primary table
-	case ets:insert_new(Tab, #r_table{key = Key, ts = Time, value = Value}) of
+    case ets:insert_new(Tab, #r_table{key = Key, ts = Time, value = Value}) of
         %%don't do anything if the key exists
-		false ->  
-			{error, "Key already exists"};
-		true -> 
+        false ->  
+            {error, "Key already exists"};
+        true -> 
             %% test if max size of cache has been reached
             case CurrentSize >= Msize of
                 %% there is sufficient size
@@ -101,10 +101,10 @@ put_new(#cache{maxsize=Msize, table=Tab,itable=ITab}, Key, Value)
                     %% delete key
                     ets:delete(Tab, RIT#r_itable.key)
             end,
-			%% insert data in inverse table
-			ets:insert(ITab, #r_itable{ts = Time, key = Key}),
+            %% insert data in inverse table
+            ets:insert(ITab, #r_itable{ts = Time, key = Key}),
             ok
-	end;
+    end;
 put_new(_,_,_) ->
     throw("invalid value").
 
@@ -112,16 +112,16 @@ put_new(_,_,_) ->
 
 %% insert data
 update(Cache, Key, Value) when is_list(Value) ->
- 	update(Cache, Key, list_to_binary(Value)); 
+    update(Cache, Key, list_to_binary(Value)); 
 update(#cache{table=Tab, itable=ITab}, Key, Value) ->
-	Time = timestamp(),
-	%% update data in primary table
+    Time = timestamp(),
+    %% update data in primary table
     case ets:update_element(Tab, Key, [{#r_table.ts, Time}, {#r_table.value, Value}]) of 
         true -> 
-	        %% delete timestamp for the key
-	        1 = ets:select_delete(ITab,[{ #r_itable{ts='_', key='$1'}, [], 
+            %% delete timestamp for the key
+            1 = ets:select_delete(ITab,[{ #r_itable{ts='_', key='$1'}, [], 
                                       [{'==', '$1', Key}]}]),
-	        true = ets:insert_new(ITab, #r_itable{ts = Time, key = Key}),
+            true = ets:insert_new(ITab, #r_itable{ts = Time, key = Key}),
             ok;
         false ->
             not_found
@@ -131,32 +131,44 @@ update(#cache{table=Tab, itable=ITab}, Key, Value) ->
 
 %% Get data given the key
 get(#cache{table=Tab}, Key, Timeout) ->
-	case ets:lookup(Tab, Key) of
-		[Rtable] ->
-			Value = binary_to_list(Rtable#r_table.value),
-			TimeStamp = timestamp(),
-		 	CompareTime = Rtable#r_table.ts + Timeout * 1000,
-			if 
-				CompareTime >= TimeStamp ->
-					{ok, Value};
-				CompareTime < TimeStamp ->
-					timed_out
-			end;
-		[] ->
-			not_found
-	end.
+    case ets:lookup(Tab, Key) of
+        [Rtable] ->
+            Value = binary_to_list(Rtable#r_table.value),
+            TimeStamp = timestamp(),
+            CompareTime = Rtable#r_table.ts + Timeout * 1000,
+            if 
+                CompareTime >= TimeStamp ->
+                    {ok, Value};
+                CompareTime < TimeStamp ->
+                    timed_out
+            end;
+        [] ->
+            not_found
+    end.
 
+-spec destroy(ets_cache()) -> true.
 destroy(#cache{table=Tab, itable=ITab}) ->
     ets:delete(Tab),
     ets:delete(ITab).
 
-% @private
-timestamp() ->
-	{Mega,Sec,Micro} = erlang:now(),
-	(Mega*1000000+Sec)*1000000+Micro.
 
-%%%%%%%%%%%%%%%%%%%%
-%%%%%%%%%%%%%%%%%%%%
+
+%% @doc Returns the current timestamp.
+%% Same as calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
+%% but significantly faster.
+-spec timestamp() -> timestamp().
+timestamp() ->
+    {MegaSeconds, Seconds, _} = os:timestamp(),
+    ?SECONDS_FROM_GREGORIAN_BASE_TO_EPOCH + MegaSeconds*1000000 + Seconds.
+
+-define(DAYS_FROM_GREGORIAN_BASE_TO_EPOCH, (1970*365+478)).
+-define(SECONDS_FROM_GREGORIAN_BASE_TO_EPOCH,
+    (?DAYS_FROM_GREGORIAN_BASE_TO_EPOCH * 24*60*60)).
+    %% == calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}})
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
 -define(BATCHSIZE, 10000).
