@@ -26,121 +26,113 @@
 -module(ets_cache).
 
 -export([   new/1,
-            put_new/3,
-            update/3,
+            put/3,
+            put/4,
+            get/2,
             get/3,
             destroy/1
         ]).
 
 -export_type([ets_cache/0]).
 
--opaque ets_cache() :: #cache{}.
--type key() :: any().
--type value() :: any().
-
-
-%% @doc Record for ets_cache. It has 2 ets tables, and a maximum size for the cache
+%% @doc Record for ets_cache. 
+%% It has 2 ETS tables, a maximum size and the current size.
 -record(cache, {
-    maxsize :: non_neg_integer(),
-    table :: tab(),
-    itable :: tab()
+    max_size :: non_neg_integer(),
+    table :: ets:tab(),
+    itable :: ets:tab()
 }).
 
-%% Table with the key, value and timestamp
--record(r_table, {
+%% @doc Row with a key, a value and last modified timestamp
+-record(row, {
     key :: key(),
-    ts :: integer(),
+    ts :: timestamp(),
     value :: value()
 }).
 
-
-%% Inverted table, ordered by timestamp, so we can always know the oldest key
--record(r_itable, {
-    ts :: integer(),
+%% @doc Inverted Row, ordered by timestamp to always know the oldest key.
+-record(irow, {
+    ts :: timestamp(),
     key :: key()
 }).
 
-%% the key where is stored the current cache size
+%% @doc The key name where the current cache size is stored.
 -define(CACHE_SIZE, cache_size).
 
-%% Create a new cache with a mixumim size
-new(Maxsize) -> 
-    Table = ets:new(table, [set,private,{keypos,#r_table.key}]),
-    ITable = ets:new(itable, [ordered_set,private,{keypos,#r_itable.ts}]),
+-opaque ets_cache() :: #cache{}.
+-type key() :: any().
+-type value() :: any().
+-type timestamp() :: non_neg_integer().
+
+%% @doc Creates a new cache with a maximum size.
+-spec new(non_neg_integer()) -> ets_cache().
+new(Max) ->
+    Table = ets:new(table, [set,private,{keypos,#row.key}]),
+    ITable = ets:new(itable, [ordered_set,private,{keypos,#irow.ts}]),
     ets:insert(Table, {dummy, ?CACHE_SIZE, 0}),
-    #cache{maxsize = Maxsize, table=Table, itable=ITable}.
-    
-    
+    #cache{max_size=Max, table=Table, itable=ITable}.
 
-%% Insert NEW data in cache 
-put_new(Cache, Key, Value) when is_list(Value) ->
-    put_new(Cache, Key, list_to_binary(Value)); 
-put_new(#cache{maxsize=Msize, table=Tab,itable=ITab}, Key, Value) 
-        when is_binary(Value) ->
-    [{_,?CACHE_SIZE, CurrentSize}] = ets:lookup(Tab, ?CACHE_SIZE),
-    Time = timestamp(),
-    %% insert data in primary table
-    case ets:insert_new(Tab, #r_table{key = Key, ts = Time, value = Value}) of
-        %%don't do anything if the key exists
-        false ->  
-            {error, "Key already exists"};
-        true -> 
-            %% test if max size of cache has been reached
-            case CurrentSize >= Msize of
-                %% there is sufficient size
-                false ->
-                    ets:update_counter(Tab, ?CACHE_SIZE, {3, 1});
-                %% need to prune data
-                true ->
-                    %% get oldest timestamp
-                    PrunedKey = ets:first(ITab),
-                    %% get key of the oldest timestamp
-                    [RIT] = ets:lookup(ITab, PrunedKey),
-                    %% delete timestamp
-                    ets:delete(ITab, PrunedKey),
-                    %% delete key
-                    ets:delete(Tab, RIT#r_itable.key)
-            end,
-            %% insert data in inverse table
-            ets:insert(ITab, #r_itable{ts = Time, key = Key}),
-            ok
-    end;
-put_new(_,_,_) ->
-    throw("invalid value").
-
-
-
-%% insert data
-update(Cache, Key, Value) when is_list(Value) ->
-    update(Cache, Key, list_to_binary(Value)); 
-update(#cache{table=Tab, itable=ITab}, Key, Value) ->
-    Time = timestamp(),
-    %% update data in primary table
-    case ets:update_element(Tab, Key, [{#r_table.ts, Time}, {#r_table.value, Value}]) of 
-        true -> 
-            %% delete timestamp for the key
-            1 = ets:select_delete(ITab,[{ #r_itable{ts='_', key='$1'}, [], 
-                                      [{'==', '$1', Key}]}]),
-            true = ets:insert_new(ITab, #r_itable{ts = Time, key = Key}),
-            ok;
+%% @doc Inserts data in cache with the current timestamp.
+-spec put(ets_cache(), key(), value()) -> true.
+put(C, Key, Value) -> 
+    put(C, Key, Value, timestamp()).
+%% @doc Inserts data in cache with a given timestamp.
+-spec put(ets_cache(), key(), value(), timestamp()) -> true.
+put(#cache{max_size=MaxSize, table=Tab, itable=ITab}, Key, Value, Now) ->
+    % try to insert data in primary table -> O(1)
+    case ets:insert_new(Tab, #row{key = Key, ts = Now, value = Value}) of
+        % key already exists
         false ->
-            not_found
-    end.
+            % insert data in primary table -> O(1)
+            ets:insert(Tab, #row{key = Key, ts = Now, value = Value}),
+            % delete current timestamp for the key
+            ets:match_delete(Tab, #irow{ts='_', key=Key});
+        % the key was new and it was inserted
+        true ->
+            % get the cache's current size
+            CurrentSize = ets:lookup_element(Tab, ?CACHE_SIZE, 3),
+            % test if max size of cache has been reached
+            case CurrentSize >= MaxSize of
+                % there is sufficient size
+                false ->
+                    ets:update_counter(Tab, ?CACHE_SIZE, 1);
+                % need to prune data
+                true ->
+                    % get oldest timestamp
+                    case ets:slot(ITab, 0) of
+                        [RIT] -> %% delete timestamp
+                                 ets:delete(ITab, RIT#irow.ts),
+                                 %% delete key
+                                 ets:delete(Tab, RIT#irow.key);
+                        '$end_of_table' -> ok
+                    end
+            end
+    end,
+    % insert new timestamp for the key -> O(log(N))
+    ets:insert(ITab, #irow{ts = Now, key = Key}).
 
-
-
-%% Get data given the key
+%% @doc Gets data given the key.
+-spec get(ets_cache(), key()) ->  {ok, value()} | not_found | expired.
+get(Table, Key) -> 
+    get(Table, Key, undefined).
+%% @doc Gets data given the key, if not expired according to the timeout.
+-spec get(ets_cache(), key(), timestamp()) -> {ok, value()} | not_found | expired.
 get(#cache{table=Tab}, Key, Timeout) ->
+    % lookup key
     case ets:lookup(Tab, Key) of
-        [Rtable] ->
-            Value = binary_to_list(Rtable#r_table.value),
-            TimeStamp = timestamp(),
-            CompareTime = Rtable#r_table.ts + Timeout * 1000,
-            if 
-                CompareTime >= TimeStamp ->
-                    {ok, Value};
-                CompareTime < TimeStamp ->
-                    timed_out
+        % found key/value
+        [Row] ->
+            % test timeout
+            case Timeout =/= undefined of
+                true ->
+                    Now = timestamp(),
+                    CompareTime = Row#row.ts + Timeout * 1000,
+                    % compare timeout to own timestamp
+                    case CompareTime =< Now of
+                        false -> {ok, Row#row.value};
+                        true  -> expired
+                    end;
+                false -> {ok, Row#row.value}
             end;
         [] ->
             not_found
@@ -153,6 +145,11 @@ destroy(#cache{table=Tab, itable=ITab}) ->
 
 
 
+-define(DAYS_FROM_GREGORIAN_BASE_TO_EPOCH, (1970*365+478)).
+-define(SECONDS_FROM_GREGORIAN_BASE_TO_EPOCH,
+    (?DAYS_FROM_GREGORIAN_BASE_TO_EPOCH * 24*60*60)).
+    %% == calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}})
+
 %% @doc Returns the current timestamp.
 %% Same as calendar:datetime_to_gregorian_seconds(erlang:universaltime()),
 %% but significantly faster.
@@ -161,17 +158,14 @@ timestamp() ->
     {MegaSeconds, Seconds, _} = os:timestamp(),
     ?SECONDS_FROM_GREGORIAN_BASE_TO_EPOCH + MegaSeconds*1000000 + Seconds.
 
--define(DAYS_FROM_GREGORIAN_BASE_TO_EPOCH, (1970*365+478)).
--define(SECONDS_FROM_GREGORIAN_BASE_TO_EPOCH,
-    (?DAYS_FROM_GREGORIAN_BASE_TO_EPOCH * 24*60*60)).
-    %% == calendar:datetime_to_gregorian_seconds({{1970,1,1},{0,0,0}})
 
 
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% ===================================================================
+%% EUnit tests
+%% ===================================================================
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
--define(BATCHSIZE, 10000).
+-define(TEST_SIZE, 500).
 
 ets_cache_test_() ->
     {setup,
@@ -179,50 +173,54 @@ ets_cache_test_() ->
         fun stop/1,
         fun(C) ->
             {inparallel,
-                [insert_unique_new_t(C, I * ?BATCHSIZE + 1, (I + 1) * ?BATCHSIZE)
-                || I <- lists:seq(0, 20)] ++
-                [insert_existing_new_t(C, I) || I <- lists:seq(0,20)] ++
-                [
-                    update_non_existing(C),
-                    update_existing(C)
-                ]
-             }
+                [ get_put(C) || _ <- lists:seq(1, 20)] ++
+                [ pruning(C) || _ <- lists:seq(1, 20)] 
+            }
         end
     }.
 
-start() ->
-    C = ets_cache:new(100000),
-    % fill the cache
-    [put_new(C, "kk" ++ integer_to_list(I), <<"">>) || I <- lists:seq(1, 100000)],
-    C.
+start() -> new(?TEST_SIZE).
+stop(C) -> destroy(C).
 
-stop(C) ->
-    destroy(C).
+get_put(C) ->
+    % Put values
+    P1 = put(C, key1, v1),
+    P2 = put(C, key2, v2),
+    P3 = put(C, key3, v3),
+    P4 = put(C, key3, v33),
+    %% Get values
+    G1 = get(C, key1),
+    G2 = get(C, key2),
+    G3 = get(C, key3, 0),
+    G4 = get(C, key3),
+    G5 = get(C, key3, 999999),
+    [
+    ?_assert(P1),
+    ?_assert(P2),
+    ?_assert(P3),
+    ?_assert(P4),
+    ?_assertEqual({ok, v1} , G1),
+    ?_assertEqual({ok, v2}  , G2),
+    ?_assertEqual(expired   , G3),
+    ?_assertEqual({ok, v33} , G4),
+    ?_assertEqual({ok, v33} , G5)
+    ].
 
-insert_unique_new_t(C, Start, End) ->
-    R = [put_new(C, "iunt" ++ integer_to_list(I), <<"ssssss">>) || I <- lists:seq(Start, End)],
-    E = lists:duplicate(End - Start + 1, ok),
-    %?debugFmt("R: ~p~n E: ~p~n", [R, E]),
-    [?_assertEqual(E, R)].
-
-insert_existing_new_t(C, I) ->
-    Key = "ient" ++ integer_to_list(I),
-    R = [put_new(C, Key, <<"ssssss">>) || _I <- lists:seq(1, ?BATCHSIZE)],
-    E = [ok | lists:duplicate(?BATCHSIZE - 1, {error,"Key already exists"})],
-    [?_assertEqual(E, R)].
-
-update_non_existing(C) ->
-    E = not_found,
-    R1 = update(C, non_existing_key, <<"value">>),
-    R2 = update(C, non_existing_key, <<"value">>),
-    [?_assertEqual(E, R1),
-     ?_assertEqual(E, R2)].
-
-update_existing(C) ->
-    ok = put_new(C, update_existing, <<"123">>),
-    {ok, "123"} =  get(C, update_existing, 10000),
-    ok = update(C, update_existing, <<"456">>),
-    R = get(C, update_existing, 10000),
-    [ ?_assertEqual({ok, "456"}, R)].
+pruning(C) ->
+    FoundFun    =
+        fun(A) ->
+            case A of
+                        {ok,_} -> true;
+                        not_found -> false
+            end
+        end,
+    NotFoundFun = fun(A) -> not FoundFun(A) end,
+    Puts =      [ put(C, "k" ++ integer_to_list(I), <<"">>, I)
+                || I <- lists:seq(1, ?TEST_SIZE*2)],
+    GetsF =     [ FoundFun( get(C, "k" ++ integer_to_list(I)))
+                || I <- lists:seq(?TEST_SIZE+1, ?TEST_SIZE*2)],
+    GetsNF =    [ NotFoundFun( get(C, "k" ++ integer_to_list(I)))
+                || I <- lists:seq(1, ?TEST_SIZE)],
+    [?_assert(Op) || Op <- (Puts ++ GetsF ++ GetsNF)].
 
 -endif.
