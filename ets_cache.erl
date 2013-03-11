@@ -62,7 +62,7 @@
 -opaque ets_cache() :: #cache{}.
 -type key() :: any().
 -type value() :: any().
--type timestamp() :: non_neg_integer().
+-type timestamp() :: pos_integer().
 
 %% @doc Creates a new cache with a maximum size.
 -spec new(non_neg_integer()) -> ets_cache().
@@ -116,7 +116,7 @@ put(#cache{max_size=MaxSize, table=Tab, itable=ITab}, Key, Value, Now) ->
 get(Table, Key) -> 
     get(Table, Key, undefined).
 %% @doc Gets data given the key, if not expired according to the timeout.
--spec get(ets_cache(), key(), timestamp()) -> {ok, value()} | not_found | expired.
+-spec get(ets_cache(), key(), (undefined | timestamp())) -> {ok, value()} | not_found | expired.
 get(#cache{table=Tab}, Key, Timeout) ->
     % lookup key
     case ets:lookup(Tab, Key) of
